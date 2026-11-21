@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+from datetime import date
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.storage import load_habits, save_habits
@@ -28,3 +31,15 @@ def create_habit(habit: HabitCreate):
     habits.append(new_habit)
     save_habits(habits)
     return new_habit
+
+@app.post("/habits/{habit_id}/check")
+def check_habit(habit_id: int):
+    habits = load_habits()
+    for habit in habits:
+        if habit["id"] == habit_id:
+            today = date.today().isoformat()
+            if today not in habit["checks"]:
+                habit["checks"].append(today)
+                save_habits(habits)
+            return habit
+    raise HTTPException(status_code=404, detail="Habit not found")
