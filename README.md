@@ -1,8 +1,27 @@
-# Habit Tracker — ЛР 1. Dockerfile
+# Habit Tracker
 
-Учебный проект команды D по курсу «Контейнеризация и оркестрация». Приложение будет расширяться в следующих лабораторных: Docker Compose с БД, затем Kubernetes.
+Учебный проект команды D по курсу «Контейнеризация и оркестрация».
 
-## Приложение
+```
+.
+├── lab1/                  # ЛР 1. Dockerfile
+│   ├── app/
+│   ├── Dockerfile
+│   ├── Dockerfile.bad
+│   ├── requirements.txt
+│   └── .dockerignore
+└── lab2/                  # ЛР 2. Docker Compose
+    ├── app/
+    ├── Dockerfile
+    ├── docker-compose.yml
+    ├── .env
+    ├── requirements.txt
+    └── .dockerignore
+```
+
+## ЛР 1. Dockerfile
+
+### Приложение
 
 Небольшой REST API на **FastAPI** для отслеживания привычек.
 
@@ -15,44 +34,43 @@
 
 Интерактивная документация Swagger доступна по адресу `http://localhost:8000/docs`.
 
-**Хранение данных.** Привычки хранятся в JSON-файле `habits.json` в папке, путь к которой задаётся переменной окружения `DATA_DIR` (по умолчанию `data`, в контейнере `/data`). Вся работа с хранилищем вынесена в `app/storage.py`, поэтому в ЛР 2 его можно заменить на PostgreSQL, не трогая эндпоинты.
+**Хранение данных.** Привычки хранятся в JSON-файле `habits.json` в папке, путь к которой задаётся переменной окружения `DATA_DIR` (по умолчанию `data`, в контейнере `/data`). Вся работа с хранилищем вынесена в `lab1/app/storage.py`. В ЛР 2 тот же API пишет в PostgreSQL.
 
-### Структура репозитория
+### Структура `lab1/`
 
 ```
-.
+lab1/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py          # эндпоинты FastAPI
 │   └── storage.py       # чтение/запись habits.json
-├── requirements.txt     # зависимости с зафиксированными версиями
+├── requirements.txt
 ├── Dockerfile           # хороший Dockerfile
 ├── Dockerfile.bad       # плохой Dockerfile
-├── .dockerignore
-└── .gitignore
+└── .dockerignore
 ```
 
-## Сборка и запуск в Docker
+### Сборка и запуск в Docker
 
-### Хороший образ
+#### Хороший образ
 
 ```powershell
-docker build -t habit-tracker:1.0 .
+docker build -t habit-tracker:1.0 lab1
 docker volume create habits-data
 docker run -d --name habit-tracker -p 8000:8000 -v habits-data:/data habit-tracker:1.0
 ```
 
-### Плохой образ
+#### Плохой образ
 
 ```powershell
-docker build -f Dockerfile.bad -t habit-tracker:bad .
+docker build -f lab1/Dockerfile.bad -t habit-tracker:bad lab1
 docker run -d --name habit-tracker-bad -p 8001:8000 -v habits-data-bad:/data habit-tracker:bad
 ```
 
 - `-p 8000:8000`: проброс порта `хост:контейнер`;
 - `-v habits-data:/data`: монтирование именованного volume в папку `/data`, куда приложение пишет `habits.json`.
 
-### Проверка volume
+#### Проверка volume
 
 ```powershell
 # создать привычку через http://localhost:8000/docs, затем:
@@ -61,11 +79,11 @@ docker run -d --name habit-tracker -p 8000:8000 -v habits-data:/data habit-track
 # http://localhost:8000/habits: привычка на месте
 ```
 
-## Плохие практики в `Dockerfile.bad` и их исправление
+### Плохие практики в `Dockerfile.bad` и их исправление
 
 Оба образа собираются и работают! Приложение отвечает на запросы, healthcheck проходит, данные сохраняются в volume. Отличаются они тем, *как* собраны.
 
-### 1. Базовый образ `python:latest`
+#### 1. Базовый образ `python:latest`
 
 ```dockerfile
 # Dockerfile.bad
@@ -83,7 +101,7 @@ FROM python:3.13-slim
 ```
 Версия зафиксирована (внутри Python 3.13.18), а вариант `slim` содержит только минимально необходимое.
 
-### 2. Код копируется до установки зависимостей
+#### 2. Код копируется до установки зависимостей
 
 ```dockerfile
 # Dockerfile.bad
@@ -106,7 +124,7 @@ COPY app/ ./app/
 ```
 Сначала копируется только `requirements.txt` и ставятся зависимости, а код копируется последним. При правке кода слой с `pip install` берётся из кэша (`CACHED`), и пересобирается только `COPY app/`.
 
-### 3. `apt-get update` и `apt-get install` в разных слоях, лишние пакеты
+#### 3. `apt-get update` и `apt-get install` в разных слоях, лишние пакеты
 
 ```dockerfile
 # Dockerfile.bad
@@ -127,7 +145,7 @@ RUN apt-get update \
 ```
 Здесь всё в одном слое, без рекомендуемых пакетов и с удалением списков в том же `RUN`.
 
-### 4. Приложение работает от root
+#### 4. Приложение работает от root
 
 В `Dockerfile.bad` нет инструкции `USER`, поэтому процесс запускается от суперпользователя:
 
@@ -152,7 +170,7 @@ USER appuser
 docker exec habit-tracker whoami   # appuser
 ```
 
-### Остальные хорошие практики в `Dockerfile`
+#### Остальные хорошие практики в `Dockerfile`
 
 - `.dockerignore` исключает из контекста сборки `.venv`, `.git`, `.idea`, локальные данные и `.env`: сборка быстрее, и в образ не попадают лишние файлы и секреты;
 - `PYTHONUNBUFFERED=1`: логи сразу видны в `docker logs`; `PYTHONDONTWRITEBYTECODE=1`: в образе не создаются `.pyc`;
@@ -160,7 +178,7 @@ docker exec habit-tracker whoami   # appuser
 - `CMD` в exec-форме (`["uvicorn", ...]`): uvicorn является главным процессом (PID 1) и корректно получает сигнал завершения при `docker stop`;
 - uvicorn запускается без `--reload` (он нужен только при разработке) и с `--host 0.0.0.0`, иначе приложение недоступно извне контейнера.
 
-## Сравнение образов
+### Сравнение образов
 
 ```powershell
 docker images habit-tracker
@@ -173,9 +191,9 @@ docker images habit-tracker
 
 Плохой образ примерно **в 8.5 раз больше** при одинаковой функциональности. Размер отдельных слоёв можно посмотреть командой `docker history <образ>`.
 
-## Плохие практики при использовании контейнера
+### Плохие практики при использовании контейнера
 
-### 1. Запуск без volume
+#### 1. Запуск без volume
 
 ```powershell
 docker run -d -p 8000:8000 habit-tracker:1.0   # без -v
@@ -185,7 +203,7 @@ docker run -d -p 8000:8000 habit-tracker:1.0   # без -v
 
 **Как правильно:** всегда монтировать volume в `/data`: `-v habits-data:/data`.
 
-### 2. Несколько контейнеров с одним и тем же volume
+#### 2. Несколько контейнеров с одним и тем же volume
 
 ```powershell
 docker run -d --name ht1 -p 8000:8000 -v habits-data:/data habit-tracker:1.0
@@ -196,12 +214,50 @@ docker run -d --name ht2 -p 8001:8000 -v habits-data:/data habit-tracker:1.0
 
 **Как правильно:** запускать один экземпляр приложения на volume. Для масштабирования нужна бд.
 
-## Когда не стоит использовать контейнеры
+### Когда не стоит использовать контейнеры
 
-### 1. Приложению нужна другая ОС или прямой доступ к железу
+#### 1. Приложению нужна другая ОС или прямой доступ к железу
 
 У контейнера нет своей операционной системы: он работает на ОС того компьютера, где запущен. Поэтому программу только для Windows не запустить в Linux-контейнере. Также контейнеры не подходят для драйверов и программ, которые напрямую работают с оборудованием. Для таких задач нужна виртуальная машина или запуск прямо на компьютере.
 
-### 2. Маленький разовый скрипт или простое приложение на одной машине
+#### 2. Маленький разовый скрипт или простое приложение на одной машине
 
 Если это, например, скрипт, который раз в месяц запускается на одном компьютере и не имеет сложных зависимостей, контейнеризация добавляет больше сложности, чем пользы. Нужно поставить и поддерживать Docker, писать и обновлять Dockerfile, пересобирать образ при каждом изменении. Контейнеры окупаются, когда важны одинаковое окружение на разных машинах, изоляция зависимостей и автоматизированный деплой. Для разового скрипта хорошим вариантом будет виртуальное окружение Python.
+
+## ЛР 2. Docker Compose
+
+Тот же API, что в ЛР 1, но привычки лежат в PostgreSQL. Образ приложения собирается из `lab2/Dockerfile` (тот же хороший Dockerfile, плюс `psycopg2-binary`) и получает имя `habit-tracker:2.0`.
+
+Три сервиса в одной сети `habit-net`:
+
+| Сервис | Контейнер | Роль |
+|---|---|---|
+| `db` | `habit-db` | PostgreSQL 16, данные в volume `habit-pgdata` |
+| `init` | `habit-init` | один раз создаёт таблицу `habits` и завершается |
+| `app` | `habit-tracker` | FastAPI, порт `${APP_PORT}` → 8000 |
+
+`init` ждёт, пока `db` станет healthy, `app` стартует только после успешного выхода `init`. У `app` и `db` есть healthcheck. У `init` и `app` задан `command`. Все переменные — в `lab2/.env`, в compose только `${...}` и `env_file`.
+
+```powershell
+docker compose -f lab2/docker-compose.yml up --build -d
+# http://localhost:8000/docs
+docker compose -f lab2/docker-compose.yml down
+```
+
+Volume БД при `down` не удаляется. Чтобы стереть данные: `docker compose -f lab2/docker-compose.yml down -v`.
+
+### Вопросы
+
+**Можно ли ограничивать память или CPU сервиса в docker-compose.yml?** Да. В Compose V2 лимиты из `deploy.resources` применяются и без Swarm:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: "0.50"
+      memory: 256M
+```
+
+Короткие ключи того же смысла: `cpus` и `mem_limit`.
+
+**Как запустить только один сервис?** `docker compose up <сервис>` поднимает его и зависимости из `depends_on`. Чтобы не поднимать зависимости: `docker compose up --no-deps <сервис>`.

@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: habit-db
+    env_file: .env
+    volumes:
+      - habit-pgdata:/var/lib/postgresql/data
+    networks:
+      - habit-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  init:
+    image: habit-tracker:2.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: habit-init
+    env_file: .env
+    networks:
+      - habit-net
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "app.init_db"]
+    restart: "no"
+
+  app:
+    image: habit-tracker:2.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: habit-tracker
+    env_file: .env
+    ports:
+      - "${APP_PORT}:8000"
+    networks:
+      - habit-net
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  habit-net:
+    name: habit-net
+    driver: bridge
+
+volumes:
+  habit-pgdata:
+    name: habit-pgdata
